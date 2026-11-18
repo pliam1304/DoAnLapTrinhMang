@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nega.Agent/Nega.Agent.csproj" />
+    <Project Path="src/Nega.Common/Nega.Common.csproj" />
+    <Project Path="src/Nega.Server/Nega.Server.csproj" />
+  </Folder>
+</Solution>

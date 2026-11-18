@@ -1,0 +1,39 @@
+# Build artifacts (.NET)
+bin/
+obj/
+out/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+.idea/
+
+# OS & Editor junk
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Secrets, private keys & local configuration (KHÔNG ĐẨY LÊN GITHUB)
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.Development.json
+appsettings.Production.json
+*.secrets.json
+secrets/
+*.pfx
+*.pem
+*.key
+*.crt
+
+# Tài liệu đề cương & báo cáo (giữ riêng ngoài repository code)
+DeCuong*
+BaoCao*
+*.docx
+*.doc
+*.pdf
