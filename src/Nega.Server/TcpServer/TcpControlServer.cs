@@ -86,7 +86,11 @@ public sealed class TcpControlServer : BackgroundService
     /// <summary>
     /// Gửi lệnh Khóa hoặc Mở khóa chuột &amp; bàn phím (0x03 CMD_LOCK_INPUT) tới 1 máy hoặc toàn bộ phòng ("ALL").
     /// </summary>
-    public async Task<int> SendLockInputCommandAsync(string targetClientId, bool locked, string? customMessage = null)
+    public async Task<int> SendLockInputCommandAsync(
+        string targetClientId,
+        bool locked,
+        string? customMessage = null,
+        string actorUsername = "host")
     {
         var payload = new LockInputPayload
         {
@@ -101,7 +105,7 @@ public sealed class TcpControlServer : BackgroundService
         int sentCount = await DispatchPacketAsync(targetClientId, packet).ConfigureAwait(false);
 
         string actionText = locked ? "Khóa chuột/bàn phím" : "Mở khóa chuột/bàn phím";
-        _telemetry.AddLog("LOCK", $"Đã gửi lệnh {actionText} tới {(targetClientId == "ALL" ? $"toàn bộ ({sentCount} máy)" : targetClientId)}");
+        _telemetry.AddLog("LOCK", $"[@{actorUsername}] Đã gửi lệnh {actionText} tới {(targetClientId == "ALL" ? $"toàn bộ ({sentCount} máy)" : targetClientId)}");
         return sentCount;
     }
 
@@ -112,7 +116,8 @@ public sealed class TcpControlServer : BackgroundService
         string targetClientId,
         string title,
         string message,
-        string severity = "urgent")
+        string severity = "urgent",
+        string actorUsername = "host")
     {
         var payload = new EmergencyAlertPayload
         {
@@ -128,7 +133,7 @@ public sealed class TcpControlServer : BackgroundService
         PacketEnvelope packet = PacketEnvelope.FromJson(PacketType.CmdAlert, payload);
         int sentCount = await DispatchToSessionsAsync(targets, packet).ConfigureAwait(false);
 
-        _telemetry.AddLog("ALERT", $"Đã phát thông báo khẩn \"{payload.Title}\" tới {sentCount} máy trạm");
+        _telemetry.AddLog("ALERT", $"[@{actorUsername}] Đã phát thông báo khẩn \"{payload.Title}\" tới {sentCount} máy trạm");
         return (payload.AlertId, sentCount);
     }
 
@@ -140,7 +145,8 @@ public sealed class TcpControlServer : BackgroundService
         string action,
         int delaySeconds,
         bool dryRun,
-        string reason)
+        string reason,
+        string actorUsername = "host")
     {
         bool effectiveDryRun = dryRun || !NegaRuntimeConfig.Current.AllowRealShutdown;
         var payload = new ShutdownCommandPayload
@@ -155,8 +161,8 @@ public sealed class TcpControlServer : BackgroundService
         int sentCount = await DispatchPacketAsync(targetClientId, packet).ConfigureAwait(false);
 
         string logDesc = string.Equals(action, "cancel", StringComparison.OrdinalIgnoreCase)
-            ? $"Đã gửi lệnh HỦY TẮT MÁY tới {sentCount} máy trạm"
-            : $"Đã gửi lệnh TẮT MÁY (trễ {payload.DelaySeconds}s, {(effectiveDryRun ? "Safe Mode" : "Tắt thật")}) tới {sentCount} máy trạm";
+            ? $"[@{actorUsername}] Đã gửi lệnh HỦY TẮT MÁY tới {sentCount} máy trạm"
+            : $"[@{actorUsername}] Đã gửi lệnh TẮT MÁY (trễ {payload.DelaySeconds}s, {(effectiveDryRun ? "Safe Mode" : "Tắt thật")}) tới {sentCount} máy trạm";
         _telemetry.AddLog("SHUTDOWN", logDesc);
         return sentCount;
     }

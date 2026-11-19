@@ -13,9 +13,10 @@ builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
 // Đăng ký rõ ràng các tầng dịch vụ của Nega Server:
-// 1. Tầng Quản lý Trạng thái & Đo đạc (State & Telemetry)
+// 1. Tầng Quản lý Trạng thái, Tài khoản Phân quyền & Đo đạc (State & Telemetry)
 builder.Services.AddSingleton<WorkstationRegistry>();
 builder.Services.AddSingleton<TelemetryService>();
+builder.Services.AddSingleton<AccountManager>();
 
 // 2. Tầng Khám phá LAN bằng UDP Broadcast
 builder.Services.AddSingleton(sp => new UdpDiscoveryService(

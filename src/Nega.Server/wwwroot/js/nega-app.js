@@ -1,4 +1,4 @@
-// Logic điều khiển giao diện Nega Server Dashboard (Chuẩn UI/UX kế thừa từ natri-reborn)
+// Logic điều khiển giao diện Nega Server Dashboard (Hỗ trợ Phân quyền Host / CoAdmin / Viewer + Chia sẻ Link & QR Code)
 
 let currentView = 'grid';
 let statusFilter = 'ALL';
@@ -7,6 +7,9 @@ let workstationsCache = [];
 let zoomedClientId = null;
 let frameTick = 0;
 let isAuthenticated = false;
+let currentUser = { username: 'host', role: 'Host', canControl: true, isHost: true };
+let accountsCache = [];
+let lanBaseUrl = window.location.origin;
 let pollTimer = null;
 
 function escapeHtml(str) {
@@ -42,6 +45,46 @@ function initTheme() {
     document.documentElement.classList.remove('dark');
   } else {
     document.documentElement.classList.add('dark');
+  }
+}
+
+function applyRolePermissionsToUi(user) {
+  currentUser = user || { username: 'viewer', role: 'Viewer', canControl: false, isHost: false };
+  const roleLabel =
+    currentUser.role === 'Host'
+      ? 'Host Admin'
+      : currentUser.role === 'CoAdmin'
+      ? 'Đồng Quản trị'
+      : 'Chỉ theo dõi';
+
+  const pill = document.getElementById('current-user-pill');
+  if (pill) {
+    pill.textContent = `@${currentUser.username} • ${roleLabel}`;
+  }
+
+  const ctrlGroup = document.getElementById('navbar-control-group');
+  if (ctrlGroup) {
+    ctrlGroup.style.display = currentUser.canControl ? 'flex' : 'none';
+  }
+
+  const zoomCtrl = document.getElementById('zoom-control-btns');
+  if (zoomCtrl) {
+    zoomCtrl.style.display = currentUser.canControl ? 'flex' : 'none';
+  }
+
+  const simNav = document.getElementById('nav-simulator');
+  if (simNav) {
+    simNav.style.display = currentUser.canControl ? 'flex' : 'none';
+  }
+
+  const shareBtn = document.getElementById('btn-share-access');
+  if (shareBtn) {
+    shareBtn.style.display = currentUser.isHost ? 'inline-flex' : 'none';
+  }
+
+  const logoutBtn = document.getElementById('btn-logout');
+  if (logoutBtn) {
+    logoutBtn.style.display = currentUser.username !== 'host' ? 'inline-flex' : 'none';
   }
 }
 
@@ -95,8 +138,12 @@ async function fetchOverview() {
     const data = await res.json();
     frameTick++;
 
+    if (data.currentUser) {
+      applyRolePermissionsToUi(data.currentUser);
+    }
+
     document.getElementById('server-host-badge').textContent =
-      `${data.serverName} (${data.serverIp}) • UDP :${data.udpPort} • TCP :${data.tcpPort}`;
+      `${data.serverName} (${data.serverIp}:${data.httpPort || 5050}) • UDP :${data.udpPort} • TCP :${data.tcpPort}`;
 
     document.getElementById('badge-online-count').textContent = data.metrics.onlineCount;
     document.getElementById('badge-total-count').textContent = data.metrics.totalWorkstations;
@@ -125,7 +172,6 @@ function renderWorkstations(list, refreshImages) {
   const filtered = list.filter(matchesFilter);
   const validIds = new Set(filtered.map((w) => w.clientId));
 
-  // Xóa các thẻ không còn trong bộ lọc
   Array.from(container.children).forEach((child) => {
     if (!validIds.has(child.dataset.clientId)) {
       child.remove();
@@ -156,7 +202,7 @@ function renderWorkstations(list, refreshImages) {
         </div>
         <div class="ws-card-footer">
           <div style="font-size:0.71rem;color:hsl(var(--muted-foreground));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" class="ws-ack-text"></div>
-          <div style="display:flex;gap:0.35rem;flex-shrink:0;">
+          <div class="ws-action-btns" style="display:flex;gap:0.35rem;flex-shrink:0;">
             <button class="btn btn-secondary btn-sm ws-lock-btn"></button>
             <button class="btn btn-secondary btn-sm" onclick="openAlertModal('${ws.clientId}')" title="Gửi thông báo khẩn tới máy này">TB</button>
             <button class="btn btn-destructive btn-sm" onclick="openShutdownModal('${ws.clientId}')" title="Tắt máy hoặc hủy tắt máy">Tắt</button>
@@ -188,6 +234,11 @@ function renderWorkstations(list, refreshImages) {
 
     card.querySelector('.ws-ack-text').textContent = ws.lastAckDetail || 'Sẵn sàng';
 
+    const actionBtns = card.querySelector('.ws-action-btns');
+    if (actionBtns) {
+      actionBtns.style.display = currentUser.canControl ? 'flex' : 'none';
+    }
+
     const lockBtn = card.querySelector('.ws-lock-btn');
     lockBtn.textContent = ws.isLocked ? 'Mở khóa' : 'Khóa';
     lockBtn.onclick = () => sendLockCommand(ws.clientId, !ws.isLocked);
@@ -217,9 +268,13 @@ function renderTable(list) {
       <td>
         <div style="display:flex;gap:0.35rem;">
           <button class="btn btn-secondary btn-sm" onclick="openZoomModal('${escapeHtml(ws.clientId)}')">Zoom HD</button>
-          <button class="btn btn-secondary btn-sm" onclick="sendLockCommand('${escapeHtml(ws.clientId)}', ${!ws.isLocked})">${ws.isLocked ? 'Mở khóa' : 'Khóa'}</button>
-          <button class="btn btn-secondary btn-sm" onclick="openAlertModal('${escapeHtml(ws.clientId)}')">Thông báo</button>
-          <button class="btn btn-destructive btn-sm" onclick="openShutdownModal('${escapeHtml(ws.clientId)}')">Tắt máy</button>
+          ${
+            currentUser.canControl
+              ? `<button class="btn btn-secondary btn-sm" onclick="sendLockCommand('${escapeHtml(ws.clientId)}', ${!ws.isLocked})">${ws.isLocked ? 'Mở khóa' : 'Khóa'}</button>
+                 <button class="btn btn-secondary btn-sm" onclick="openAlertModal('${escapeHtml(ws.clientId)}')">Thông báo</button>
+                 <button class="btn btn-destructive btn-sm" onclick="openShutdownModal('${escapeHtml(ws.clientId)}')">Tắt máy</button>`
+              : `<span style="font-size:0.72rem;color:hsl(var(--muted-foreground));align-self:center;">Chỉ xem</span>`
+          }
         </div>
       </td>
     </tr>
@@ -409,17 +464,163 @@ async function setSimulatedCount(count) {
   fetchOverview();
 }
 
+// --- SHARE LINK, QR CODE & ACCOUNT MANAGEMENT (HOST) ---
+async function openShareModal() {
+  document.getElementById('share-modal').classList.add('open');
+  await loadAccountsForHost();
+}
+
+function closeShareModal() {
+  document.getElementById('share-modal').classList.remove('open');
+}
+
+async function loadAccountsForHost() {
+  try {
+    const res = await fetch('/api/accounts', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    lanBaseUrl = data.lanBaseUrl || window.location.origin;
+    accountsCache = data.accounts || [];
+
+    document.getElementById('share-lan-url').value = lanBaseUrl;
+    const defaultInviteAcc = accountsCache.find((a) => a.username === 'viewer') || accountsCache[0];
+    if (defaultInviteAcc) {
+      selectAccountForQr(defaultInviteAcc.username);
+    }
+
+    const tbody = document.getElementById('accounts-table-body');
+    tbody.innerHTML = accountsCache
+      .map((a) => {
+        const roleBadge =
+          a.role === 'Host'
+            ? '<span class="status-pill status-locked">Host (Toàn quyền)</span>'
+            : a.role === 'CoAdmin'
+            ? '<span class="status-pill status-online">Co-Admin (Điều khiển)</span>'
+            : '<span class="status-pill status-offline">Viewer (Chỉ theo dõi)</span>';
+
+        return `
+        <tr>
+          <td><b>@${escapeHtml(a.username)}</b></td>
+          <td><code style="padding:0.15rem 0.45rem;border-radius:0.4rem;background:hsl(var(--secondary));font-weight:700;">${escapeHtml(a.password)}</code></td>
+          <td>${roleBadge}</td>
+          <td>
+            <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+              <button class="btn btn-secondary btn-sm" onclick="copyAccountCredentials('${escapeHtml(a.username)}', '${escapeHtml(a.password)}', '${escapeHtml(a.role)}')">Copy TK &amp; MK</button>
+              <button class="btn btn-secondary btn-sm" onclick="selectAccountForQr('${escapeHtml(a.username)}')">Hiện QR &amp; Link 1 chạm</button>
+              ${
+                a.username !== 'admin'
+                  ? `<button class="btn btn-destructive btn-sm" onclick="deleteAccount('${escapeHtml(a.username)}')">Xóa</button>`
+                  : ''
+              }
+            </div>
+          </td>
+        </tr>
+      `;
+      })
+      .join('');
+  } catch {
+    // Ignore error
+  }
+}
+
+function selectAccountForQr(username) {
+  const acc = accountsCache.find((a) => a.username === username);
+  if (!acc) return;
+  document.getElementById('share-invite-url').value = acc.inviteUrl;
+  document.getElementById('share-qr-img').src = `/api/qr?text=${encodeURIComponent(acc.inviteUrl)}`;
+  document.getElementById('share-qr-caption').textContent = `QR Đăng nhập nhanh: @${acc.username} (${acc.role})`;
+}
+
+async function createNewAccount() {
+  const username = (document.getElementById('new-acc-user').value || '').trim();
+  const password = (document.getElementById('new-acc-pass').value || '').trim();
+  const role = document.getElementById('new-acc-role').value;
+
+  if (!username || !password) {
+    showToast('Vui lòng nhập đầy đủ Tài khoản và Mật khẩu cần cấp.');
+    return;
+  }
+
+  const res = await fetch('/api/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, role })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    showToast(data.message || 'Lỗi khi tạo tài khoản.');
+    return;
+  }
+
+  document.getElementById('new-acc-user').value = '';
+  document.getElementById('new-acc-pass').value = '';
+  showToast(data.message || `Đã cấp tài khoản @${username}`);
+  await loadAccountsForHost();
+}
+
+async function deleteAccount(username) {
+  const res = await fetch(`/api/accounts/${encodeURIComponent(username)}`, { method: 'DELETE' });
+  const data = await res.json();
+  showToast(data.message || `Đã xóa tài khoản @${username}`);
+  await loadAccountsForHost();
+}
+
+function copyShareUrl() {
+  const url = document.getElementById('share-lan-url').value;
+  navigator.clipboard?.writeText(url);
+  showToast(`Đã copy link phòng máy: ${url}`);
+}
+
+function copyInviteUrl() {
+  const url = document.getElementById('share-invite-url').value;
+  navigator.clipboard?.writeText(url);
+  showToast('Đã copy Link Mời đăng nhập 1 chạm!');
+}
+
+function copyAccountCredentials(username, password, role) {
+  const text = `Link Phòng máy Nega: ${lanBaseUrl}\nTài khoản: ${username}\nMật khẩu: ${password}\nQuyền hạn: ${role}`;
+  navigator.clipboard?.writeText(text);
+  showToast(`Đã copy thông tin đăng nhập của @${username} để gửi cho bạn bè!`);
+}
+
+// --- LOGIN / LOGOUT ---
 async function bootstrapDashboard() {
   initTheme();
+
+  // Kiểm tra nếu mở bằng Link Mời 1 chạm (?invite=...)
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = params.get('invite');
+  if (inviteToken) {
+    try {
+      const invRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteToken })
+      });
+      if (invRes.ok) {
+        const invData = await invRes.json();
+        window.history.replaceState({}, document.title, window.location.pathname);
+        isAuthenticated = true;
+        applyRolePermissionsToUi(invData);
+        showToast(`Đã đăng nhập tự động: @${invData.username} (${invData.role})`);
+        startPolling();
+        return;
+      }
+    } catch {
+      // Fall through to status check
+    }
+  }
+
   try {
     const res = await fetch('/api/auth/status', { cache: 'no-store' });
     const status = await res.json();
     if (status.authenticated) {
       isAuthenticated = true;
+      applyRolePermissionsToUi(status);
       startPolling();
     } else {
       document.getElementById('auth-modal').classList.add('open');
-      setTimeout(() => document.getElementById('auth-pin-input')?.focus(), 80);
+      setTimeout(() => document.getElementById('auth-username-input')?.focus(), 80);
     }
   } catch {
     isAuthenticated = true;
@@ -435,31 +636,46 @@ function startPolling() {
 }
 
 async function submitAdminPin() {
-  const input = document.getElementById('auth-pin-input');
+  const userEl = document.getElementById('auth-username-input');
+  const passEl = document.getElementById('auth-pin-input');
   const errEl = document.getElementById('auth-error-msg');
-  const pin = (input?.value || '').trim();
+  const username = (userEl?.value || '').trim() || 'admin';
+  const password = (passEl?.value || '').trim();
   errEl.textContent = '';
 
+  if (!password) {
+    errEl.textContent = 'Vui lòng nhập mật khẩu được cấp.';
+    return;
+  }
+
   try {
-    const res = await fetch('/api/auth/verify', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin })
+      body: JSON.stringify({ username, password, pin: password })
     });
     const data = await res.json();
     if (!res.ok || !data.ok) {
-      errEl.textContent = data.message || 'Mã PIN không đúng.';
+      errEl.textContent = data.message || 'Tài khoản hoặc mật khẩu không đúng.';
       return;
     }
 
     isAuthenticated = true;
-    if (input) input.value = '';
+    if (passEl) passEl.value = '';
+    applyRolePermissionsToUi(data);
     document.getElementById('auth-modal').classList.remove('open');
-    showToast('Xác thực quản trị thành công!');
+    showToast(data.message || 'Đăng nhập thành công!');
     startPolling();
   } catch {
     errEl.textContent = 'Không thể kết nối tới Server.';
   }
+}
+
+async function logoutSession() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  isAuthenticated = false;
+  document.getElementById('auth-modal').classList.add('open');
+  showToast('Đã đăng xuất khỏi phiên hiện tại.');
 }
 
 bootstrapDashboard();
