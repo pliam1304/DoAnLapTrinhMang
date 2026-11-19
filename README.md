@@ -2,7 +2,7 @@
 
 **Nhóm thực hiện:**
 1. **Huỳnh Phúc Lâm**
-2. **Cao Khôi Nguyên**
+2. **Cao Khôi Nguyên.**
 3. **Ngô Quyền Linh**
 
 ---
