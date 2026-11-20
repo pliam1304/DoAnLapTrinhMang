@@ -4,4 +4,7 @@
     <Project Path="src/Nega.Common/Nega.Common.csproj" />
     <Project Path="src/Nega.Server/Nega.Server.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nega.Tests/Nega.Tests.csproj" />
+  </Folder>
 </Solution>

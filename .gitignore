@@ -37,3 +37,9 @@ BaoCao*
 *.docx
 *.doc
 *.pdf
+
+# Docusaurus & Node.js (Website tài liệu)
+node_modules/
+.docusaurus/
+website/build/
+.cache-loader/
